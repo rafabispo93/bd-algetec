@@ -1,0 +1,87 @@
+from flask import Flask, g
+import sqlite3
+import json
+import socket
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+DATABASE = './database.db'
+
+@app.route("/")
+def index():
+	cur = get_db()
+	return 'Database foi iniciada', 200
+
+def get_db():
+	try:
+		db = getattr(g, '_database', None)
+		database= sqlite3.connect(DATABASE)
+		ritmos = [(None, 'Bradicardia Sinusal'), (None, 'Bradicardia Juncional'), (None, 'Taquicardia Ventricular Monomórfica'), (None, 'Bloqueio AV 1º grau'), (None, 'Bloqueio AV 2º grau Mobitz I'), (None, 'Fluter Atrial'), 
+			(None, 'Fibrilação Ventricular'), (None, 'Bloqueio AV 2º grau Mobitz II'), (None, 'Bloqueio AV Total com Escape Juncional'), (None, 'Bloqueio AV Total com Escape Ventricular'), (None, 'Bloqueio AV 2:1'),
+			(None, 'Indioventricular'), (None, 'Marcapasso'), (None, 'Assistolia'), (None, 'Taquicardia Sinusal'), (None, 'Taquicardia Atrial'), (None, 'Taquicardia Supraventricular'),
+			(None, 'Fibrilação Atrial'), (None, 'Torsades de Points'), (None, 'Sinusal Normal')]
+		if db is None:
+			db = database.cursor()
+			db.execute('CREATE TABLE IF NOT EXISTS ritmo (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);')
+			data = db.execute('SELECT * FROM ritmo;').fetchall()
+			if len(data) == 0:
+				db.executemany('INSERT INTO ritmo (id, name) VALUES (?, ?);', ritmos)
+			database.commit()
+		return database
+	except Exception as error:
+		print(error)
+		database.rollback()
+		return 'Ocorreu um erro interno no servidor', 500
+
+@app.teardown_appcontext
+def close_connection(exception):
+	db = getattr(g, '_database', None)
+	if db is not None:
+		db.close()
+
+@app.route("/get/ritmos")
+def get_ritmos():
+	try:
+		db = get_db()
+		db = db.cursor()
+		ritmos = db.execute('SELECT * FROM ritmo;').fetchall()
+		return json.dumps(ritmos)
+	except Exception as error:
+		print(error)
+		return 'Ocorreu um erro interno no servidor', 500
+
+@app.route("/add/ritmo/<ritmo>")
+def add_ritmo(ritmo):
+	try:
+		database = get_db()
+		db = database.cursor()
+		to_add = [(None, ritmo)]
+		db.executemany('INSERT INTO ritmo (id, name) VALUES (?, ?);', to_add)
+		database.commit()
+		data = db.execute('SELECT * FROM ritmo;').fetchall()
+		return 'Ritmo adicionado com sucesso.', 200
+	except Exception as error:
+		print(error)
+		database.rollback()
+		return 'Ocorreu um erro interno no servidor', 500
+
+@app.route("/remove/ritmo/<id>")
+def remove_ritmo(id):
+	try:
+		database = get_db()
+		db = database.cursor()
+		db.execute('DELETE FROM ritmo WHERE id =' + id + ';')
+		database.commit()
+		return 'Ritmo apagado com sucesso', 200
+	except Exception as error:
+		print(error)
+		database.rollback()
+		return 'Ocorreu um erro interno no servidor', 500
+
+if __name__ == '__main__':
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	s.connect(('8.8.8.8',80))
+	host_ip = s.getsockname()[0]
+	s.close()
+	app.run(debug=True, host=host_ip, port=5000)

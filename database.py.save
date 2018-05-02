@@ -1,0 +1,34 @@
+from flask import Flask, g
+import sqlite3
+
+app = Flask(__name__)
+DATABASE = './database.db'
+
+@app.route("/")
+def index():
+    cur = get_db()
+    return 'Database foi iniciada'
+
+
+def get_db():
+    db = getattr(g, '_database', None)
+    ritmos = [(None, 'Sinusal'), (None, 'Taquicardia Ventricular'), (None, 'Bloqueio AV')]
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        data = db.execute('SELECT * FROM sqlite_master WHERE type="table";').fetchall()
+        print(len(data), data)
+        if len(data) == 0:
+            db.execute('CREATE TABLE ritmo (id INTEGER PRIMARY KEY, name TEXT);')
+            db.executemany('INSERT INTO ritmo (id, name) VALUES (?, ?);', ritmos)
+        print(db.execute('SELECT * FROM ritmo;').fetchall())
+    return db.cursor()
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='localhost')
