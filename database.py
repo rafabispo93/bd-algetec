@@ -14,6 +14,8 @@ CORS(app)
 DATABASE = './database.db'
 CURRENT_RYTHM = 0
 CURRENT_ANSWER = ''
+RYTHMS_LIST = []
+CURRENT_LEVEL = 0
 
 @app.route("/")
 def index():
@@ -132,12 +134,20 @@ def send_multiple_ritmos():
 		data = json.loads(data.decode('utf-8'))
 		print(data)
 		gpio.setmode(gpio.BOARD)
-		for rythm in data['ritmos']:
-			print(int(rythm))
-			global CURRENT_ANSWER
-			global CURRENT_RYTHM
-			send_via_serial(int(rythm))
-			time.sleep(30)
+		global CURRENT_RYTHM
+		global RYTHMS_LIST
+		global CURRENT_LEVEL
+		RYTHMS_LIST = data['ritmos']
+		CURRENT_LEVEL = 0
+		CURRENT_RYTHM = int(RYTHMS_LIST[0])
+		send_via_serial(int(RYTHMS_LIST[0]))
+		CURRENT_LEVEL = CURRENT_LEVEL + 1
+		#for rythm in data['ritmos']:
+		#	print(int(rythm))
+		#	global CURRENT_ANSWER
+		#	global CURRENT_RYTHM
+		#	send_via_serial(int(rythm))
+		#	time.sleep(30)
 			#while CURRENT_ANSWER != CURRENT_RYTHM:
 			#t = Timer(30.0, send_via_serial(int(rythm)))
 		return 'Sequência realizada', 200
@@ -162,10 +172,23 @@ def send_answer():
 	try:
 		data = request.data
 		data = json.loads(data.decode('utf-8'))
+		database = get_db()
+		db = database.cursor()
+		result = db.execute('SELECT * FROM ritmo WHERE name=?', [data['rythm']]).fetchall()
+		result = json.dumps(result[0]['value'])
+		print(result)
 		global CURRENT_ANSWER
+		global CURRENT_LEVEL
+		global RYTHMS_LIST
+		if RYTHMS_LIST[CURRENT_LEVEL] == result[0]['value'] and CURRENT_LEVEL < len(RYTHMS_LIST):
+			send_via_serial(int(RYTHMS_LIST[CURRENT_LEVEL]))
+			CURRENT_LEVEL = CURRENT_LEVEL + 1
+		else:
+			CURRENT_LEVEL = 0
+			RYTHMS_LIST = []
 		CURRENT_ANSWER = data['answer']
-		return json.dumps({'msg': 'Resposta enviada com sucesso'}), 200
-	except exception as error:
+		return json.dumps({'msg': 'Resposta enviada com sucesso', 'status': 200 }), 200
+	except Exception as error:
 		print(error)
 		return 'Ocorreu um erro interno no servidor', 500
 
@@ -189,6 +212,7 @@ def send_via_serial(value):
 	try:
 		port = serial.Serial('/dev/ttyS0', baudrate = 9600, stopbits = serial.STOPBITS_ONE, bytesize = serial.EIGHTBITS, timeout = 2)
 		port.write(chr(value).encode('latin_1'))
+		print(value, port)
 		return True
 	except:
 		return False
