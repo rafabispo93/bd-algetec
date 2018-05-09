@@ -141,7 +141,6 @@ def send_multiple_ritmos():
 		CURRENT_LEVEL = 0
 		CURRENT_RYTHM = int(RYTHMS_LIST[0])
 		send_via_serial(int(RYTHMS_LIST[0]))
-		CURRENT_LEVEL = CURRENT_LEVEL + 1
 		#for rythm in data['ritmos']:
 		#	print(int(rythm))
 		#	global CURRENT_ANSWER
@@ -175,17 +174,17 @@ def send_answer():
 		database = get_db()
 		db = database.cursor()
 		result = db.execute('SELECT * FROM ritmo WHERE name=?', [data['rythm']]).fetchall()
-		result = json.dumps(result[0]['value'])
-		print(result)
+		result = json.dumps(result[0][2])
 		global CURRENT_ANSWER
 		global CURRENT_LEVEL
 		global RYTHMS_LIST
-		if RYTHMS_LIST[CURRENT_LEVEL] == result[0]['value'] and CURRENT_LEVEL < len(RYTHMS_LIST):
-			send_via_serial(int(RYTHMS_LIST[CURRENT_LEVEL]))
+		print(CURRENT_LEVEL)
+		if int(CURRENT_LEVEL) >= len(RYTHMS_LIST):
+			return json.dumps({'msg': 'Exercício Finalizado', 'status': 200}), 200
+		if RYTHMS_LIST[int(CURRENT_LEVEL)] == result and int(CURRENT_LEVEL) < len(RYTHMS_LIST):
+			print("NO IF")
+			send_via_serial(int(RYTHMS_LIST[int(CURRENT_LEVEL)]))
 			CURRENT_LEVEL = CURRENT_LEVEL + 1
-		else:
-			CURRENT_LEVEL = 0
-			RYTHMS_LIST = []
 		CURRENT_ANSWER = data['answer']
 		return json.dumps({'msg': 'Resposta enviada com sucesso', 'status': 200 }), 200
 	except Exception as error:
