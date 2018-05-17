@@ -1,21 +1,19 @@
 from flask import Flask, g, request
 from threading import Timer
-import sqlite3
-import json
-import socket
-import serial
-import sys
-import string
-import time
 from flask_cors import CORS
+from multiprocessing import Process
+import sqlite3, json, csv, socket, serial, sys, string, time, numpy
+import http.client, urllib.parse
 import RPi.GPIO as gpio
+
 app = Flask(__name__)
-CORS(app)
-DATABASE = './database.db'
+CORS(app) # Pemite que browsers possam realizar requisições sem problemas de cross-origin
+DATABASE = './database.db' #arquivo previamente criado para armazenar o banco sqlite
 CURRENT_RYTHM = 0
 CURRENT_ANSWER = ''
 RYTHMS_LIST = []
 CURRENT_LEVEL = 0
+CURRENT_COMPRESSION = ""
 
 @app.route("/")
 def index():
@@ -117,11 +115,9 @@ def send_ritmo():
 		data = request.data
 		data = json.loads(data.decode('utf-8'))
 		gpio.setmode(gpio.BOARD)
-		send_to_port(int(data['ritmo']))
-		send_via_serial(int(data['ritmo']))
+		send_via_serial(int(data['ritmo'])) #manda um valor via porta serial
 		global CURRENT_RYTHM
-		CURRENT_RYTHM = int(data['ritmo'])
-		#gpio.cleanup()
+		CURRENT_RYTHM = int(data['ritmo']) # atualiza o ritmo atual
 		return 'Ritmo enviado com sucesso', 200
 	except Exception as error:
 		print(error)
@@ -178,13 +174,18 @@ def send_answer():
 		global CURRENT_ANSWER
 		global CURRENT_LEVEL
 		global RYTHMS_LIST
-		print(CURRENT_LEVEL)
+
+		#Se a etapa atual da sequência da atividade chegar ao último ritmo programado, retorna msg de exercíco finalizado 
 		if int(CURRENT_LEVEL) >= len(RYTHMS_LIST):
 			return json.dumps({'msg': 'Exercício Finalizado', 'status': 200}), 200
-		if RYTHMS_LIST[int(CURRENT_LEVEL)] == result and int(CURRENT_LEVEL) < len(RYTHMS_LIST):
-			print("NO IF")
-			send_via_serial(int(RYTHMS_LIST[int(CURRENT_LEVEL)]))
-			CURRENT_LEVEL = CURRENT_LEVEL + 1
+		elif RYTHMS_LIST[int(CURRENT_LEVEL)] == result and int(CURRENT_LEVEL) < len(RYTHMS_LIST):
+			CURRENT_LEVEL = CURRENT_LEVEL + 1 #atualiza estado atual da atividade
+			CURRENT_ANSWER = data['answer'] #atualiza a resposta atual do aluno
+			if CURRENT_LEVEL >= len(RYTHMS_LIST):
+				return json.dumps({'msg': 'Resposta Correta e Fim da Atividade', 'status': 200})
+			else:
+				send_via_serial(int(RYTHMS_LIST[int(CURRENT_LEVEL)]))
+				return json.dumps({'msg': 'Resposta Correta, direcionado para próximo ritmo', 'status': 200})
 		CURRENT_ANSWER = data['answer']
 		return json.dumps({'msg': 'Resposta enviada com sucesso', 'status': 200 }), 200
 	except Exception as error:
@@ -200,6 +201,24 @@ def get_answer():
 		print(error)
 		return 'Ocorreu um erro interno no servidor', 500
 
+@app.route("/get/current/compression_value", methods=['GET'])
+def get_compression_value():
+	try:
+		global CURRENT_COMPRESSION
+		print(CURRENT_COMPRESSION)
+		return json.dumps({'msg': 'Valor de compressão retornado com sucesso', 'value': CURRENT_COMPRESSION, 'status': 200}), 200
+	except exception as error:
+		print(error, "ERROR")
+		return 'Ocorreu um erro interno no servidor', 500
+
+@app.route("/post/compression_value", methods=['POST'])
+def post_compression_value():
+	data = request.data
+	data = json.loads(data.decode('utf-8'))
+	global CURRENT_COMPRESSION
+	CURRENT_COMPRESSION = data['value']
+	return json.dumps({'msg': 'Valor de comrpessao atualizado'}), 200
+
 def send_to_port(value):
 	list = [29, 31, 33, 35, 37]
 	gpio.setup(list, gpio.OUT)
@@ -207,19 +226,60 @@ def send_to_port(value):
 		print('Value: ', value, 'Porta: ', port)
 		gpio.output(port, value)
 		value = int(bin(value), 2) >> 1
+
+#Manda via porta serial um valor
 def send_via_serial(value):
 	try:
-		port = serial.Serial('/dev/ttyS0', baudrate = 9600, stopbits = serial.STOPBITS_ONE, bytesize = serial.EIGHTBITS, timeout = 2)
+		port = serial.Serial('/dev/ttyS0', baudrate = 115385, stopbits = serial.STOPBITS_ONE, bytesize = serial.EIGHTBITS, timeout = 2)
 		port.write(chr(value).encode('latin_1'))
 		print(value, port)
 		return True
 	except:
 		return False
 
+# Escuta na porta serial indefinidamente todos os valores que chegam
+def listen_via_serial(host_ip):
+	try:
+			port = serial.Serial('/dev/ttyS0', baudrate = 115385, stopbits = serial.STOPBITS_ONE, bytesize = serial.EIGHTBITS, timeout = 0)
+			conn = http.client.HTTPConnection(host_ip+":5000")
+			freq_numbers = [] #armazena os valores referentes a frequência da compressão cardíaca
+			values_compression = [] #armazena todos os valores que chegam desde que estejam dentro da quantidade esperada
+			n = 3 #número de informações diferentes que serão tratadas (defino em protocolo de comunicação PI3 - PIC
+			while True:
+				if port.inWaiting() > 0:
+					value = port.read(1)
+					print(value[0])
+					if value[0] > 0 and len(values_compression) <= n:
+						values_compression.append(value[0])
+					elif value[0] > 0 and len(values_compression) == n:
+						freq_numbers.append(values_compression[0])
+					else:
+						freq_numbers = [0]
+						values_compression = [0]
+					
+					if len(freq_numbers) > 0 and conn:
+						result = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
+						result = numpy.around(result, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
+
+						#print(values_compression)
+						headers = {"Content-type": "application/json", "Accept": "text/plain"}
+						conn.request('POST', '/post/compression_value', json.dumps({'value': result}), headers) #atualiza valor da frequência no servidor
+						response = conn.getresponse()
+						#print(value[0])
+	except Exception as error:
+		print(error, "ERROR Listen Serial")
+		pass
+
 if __name__ == '__main__':
+	#Identifica ip atual atribuído a essa máquina 
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	s.connect(('8.8.8.8',80))
 	host_ip = s.getsockname()[0]
-	#host_ip = socket.gethostbyname(socket.gethostname())
 	s.close()
+
+	#Cria e dispara a thread para escutar os valores que chegam na porta serial sem interromper funcionamento do servidor
+	p = Process(target=listen_via_serial, args=(str(host_ip),))
+	p.start()
 	app.run(debug=True, host=host_ip, port=5000)
+	p.join()
+
