@@ -248,7 +248,7 @@ def listen_via_serial(host_ip):
 			while True:
 				if port.inWaiting() > 0:
 					value = port.read(1)
-					print(value[0])
+					#print(value[0])
 					if value[0] > 0 and len(values_compression) <= n:
 						values_compression.append(value[0])
 					elif value[0] > 0 and len(values_compression) == n:
@@ -256,11 +256,10 @@ def listen_via_serial(host_ip):
 					else:
 						freq_numbers = [0]
 						values_compression = [0]
-					
 					if len(freq_numbers) > 0 and conn:
 						result = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
 						result = numpy.around(result, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
-
+						#print(result, "results")
 						#print(values_compression)
 						headers = {"Content-type": "application/json", "Accept": "text/plain"}
 						conn.request('POST', '/post/compression_value', json.dumps({'value': result}), headers) #atualiza valor da frequência no servidor
