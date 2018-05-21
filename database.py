@@ -14,6 +14,7 @@ CURRENT_ANSWER = ''
 RYTHMS_LIST = []
 CURRENT_LEVEL = 0
 CURRENT_COMPRESSION = ""
+ONLY_PRINT_DATA = True #Variável para escolher só visualizar dados recebidos da porta serial
 
 @app.route("/")
 def index():
@@ -245,26 +246,34 @@ def listen_via_serial(host_ip):
 			freq_numbers = [] #armazena os valores referentes a frequência da compressão cardíaca
 			values_compression = [] #armazena todos os valores que chegam desde que estejam dentro da quantidade esperada
 			n = 3 #número de informações diferentes que serão tratadas (defino em protocolo de comunicação PI3 - PIC
+			counter = 1
 			while True:
 				if port.inWaiting() > 0:
 					value = port.read(1)
-					#print(value[0])
-					if value[0] > 0 and len(values_compression) <= n:
-						values_compression.append(value[0])
-					elif value[0] > 0 and len(values_compression) == n:
-						freq_numbers.append(values_compression[0])
-					else:
-						freq_numbers = [0]
-						values_compression = [0]
-					if len(freq_numbers) > 0 and conn:
-						result = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
-						result = numpy.around(result, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
-						#print(result, "results")
-						#print(values_compression)
-						headers = {"Content-type": "application/json", "Accept": "text/plain"}
-						conn.request('POST', '/post/compression_value', json.dumps({'value': result}), headers) #atualiza valor da frequência no servidor
-						response = conn.getresponse()
+					global ONLY_PRINT_DATA
+					if ONLY_PRINT_DATA is not True:
 						#print(value[0])
+						if value[0] > 0 and len(values_compression) <= n:
+							values_compression.append(value[0])
+						elif value[0] > 0 and len(values_compression) == n:
+							freq_numbers.append(values_compression[0])
+						else:
+							freq_numbers = [0]
+							values_compression = [0]
+						if len(freq_numbers) > 0 and conn:
+							result = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
+							result = numpy.around(result, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
+							#print(result, "results")
+							#print(values_compression)
+							headers = {"Content-type": "application/json", "Accept": "text/plain"}
+							conn.request('POST', '/post/compression_value', json.dumps({'value': result}), headers) #atualiza valor da frequência no servidor
+							response = conn.getresponse()
+							#print(value[0])
+					else:
+						if counter > 12:
+							counter = 1
+						print("Value: ", value[0],"Position: ", counter)
+						counter = counter + 1
 	except Exception as error:
 		print(error, "ERROR Listen Serial")
 		pass
