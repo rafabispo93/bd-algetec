@@ -244,31 +244,36 @@ def listen_via_serial(host_ip):
 			port = serial.Serial('/dev/ttyS0', baudrate = 115385, stopbits = serial.STOPBITS_ONE, bytesize = serial.EIGHTBITS, timeout = 0)
 			conn = http.client.HTTPConnection(host_ip+":5000")
 			freq_numbers = [] #armazena os valores referentes a frequência da compressão cardíaca
+			deepness_numbers = [] #armazena os valores referentes a profundidade da compressão cardíaca
 			values_compression = [] #armazena todos os valores que chegam desde que estejam dentro da quantidade esperada
-			n = 3 #número de informações diferentes que serão tratadas (defino em protocolo de comunicação PI3 - PIC
+			n = 12 #número de informações diferentes que serão tratadas (defino em protocolo de comunicação PI3 - PIC
 			counter = 1
 			while True:
 				if port.inWaiting() > 0:
 					value = port.read(1)
 					global ONLY_PRINT_DATA
 					if ONLY_PRINT_DATA is not True:
-						#print(value[0])
-						if value[0] > 0 and len(values_compression) <= n:
+						if value[0] > 0 and len(values_compression) < n:
 							values_compression.append(value[0])
-						elif value[0] > 0 and len(values_compression) == n:
+						elif len(values_compression) == n:
 							freq_numbers.append(values_compression[0])
-						else:
-							freq_numbers = [0]
-							values_compression = [0]
-						if len(freq_numbers) > 0 and conn:
-							result = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
-							result = numpy.around(result, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
-							#print(result, "results")
-							#print(values_compression)
+							deepness_numbers.append(values_compression[1])
+							#freq_numbers = []
+							#deepness_numbers = []
+							values_comporession = []
+						#else:
+						#	freq_numbers = [0]
+						#	deepness_numbers = [0]
+						#	values_compression = [0]
+						if len(deepness_numbers) > 0 and conn:
+						#	result_freq = numpy.mean(freq_numbers, axis=0) #calcula média dos valores da frequência da compressão cardíaca
+						#	result_freq = numpy.around(result_freq, decimals=0) # arredonda valores da média da frequência da compressao cardíaca
+							result_deepness = numpy.mean(deepness_numbers, axis=0) #calcula média dos valores da profundidade da compressao cardíaca
+							result_deepness = numpy.around(result_deepness, decimals=0) #arredonda valores da média da profundidade da compressao cardíaca
 							headers = {"Content-type": "application/json", "Accept": "text/plain"}
-							conn.request('POST', '/post/compression_value', json.dumps({'value': result}), headers) #atualiza valor da frequência no servidor
+							conn.request('POST', '/post/compression_value', json.dumps({'value': result_deepness}), headers) #atualiza valor no servidor
 							response = conn.getresponse()
-							#print(value[0])
+						#	print(deepness_numbers)
 					else:
 						if counter > 12:
 							counter = 1
@@ -279,7 +284,7 @@ def listen_via_serial(host_ip):
 		pass
 
 if __name__ == '__main__':
-	#Identifica ip atual atribuído a essa máquina 
+	#Identifica ip atual atribuído a essa máquina
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	s.connect(('8.8.8.8',80))
 	host_ip = s.getsockname()[0]
